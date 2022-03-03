@@ -23,3 +23,8 @@ def send_confirm_account_mail(user,token, to=None):
 
 def send_reset_password_mail(user,token):
     send_mail(subject='Reset Password', to=user.email, template='emails/change', user=user, token=token)
+
+
+def send_change_email_email(user,token,to=None):
+    send_mail(subject='Change Email', to=to or user.email, template='email/change_email.html',user=user, token=token)
+    

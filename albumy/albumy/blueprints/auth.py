@@ -1,12 +1,12 @@
 from flask import Blueprint, url_for, flash, redirect,render_template
-from flask_login import login_required, current_user, login_user,logout_user
-from albumy.emails import send_register_mail, send_reset_password_mail
+from flask_login import login_required, login_fresh, confirm_login, current_user, login_user,logout_user
+from albumy.emails import send_reset_password_mail
 from albumy.forms.auth import ForgetPasswordForm, RegisterForm, LoginForm, ResetPasswordForm
 from albumy.models import User
 from albumy.extensions import db
 from albumy.utils import generate_token, validate_token, redirect_back
 from albumy.settings import Operations
-from albumy.emails import send_confirm_mail
+from albumy.emails import send_confirm_account_mail
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -27,7 +27,7 @@ def register():
         db.session.add(user)
         db.session.commit()
         token = generate_token(user=user, operation=Operations.CONFIRM)
-        send_confirm_mail(user, token)
+        send_confirm_account_mail(user, token)
         flash('激活邮件已发送到注册邮箱', 'info')
         return redirect(url_for('.login'))
     return render_template('auth/register.html', form=form)
@@ -53,16 +53,15 @@ def resend_confirm_email():
     if current_user.confirmed:
         return redirect(url_for('main.index'))
     token = generate_token(user=current_user,operation=Operations.CONFIRM)
-    send_confirm_mail(user=current_user, token=token)
+    send_confirm_account_mail(user=current_user, token=token)
     flash('新邮件已发送', 'info')
     return redirect(url_for('main.index'))
     
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.confirmed:
+    if current_user.is_authenticated:
         return redirect(url_for('main.index'))
-    
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data.lower()).first()
@@ -83,7 +82,16 @@ def login():
 @auth_bp.route('/re-authenticate', methods=['GET', 'POST'])
 @login_required
 def re_authenticate():
-    pass
+    if login_fresh():
+        return redirect(url_for('main.index'))
+
+    form = LoginForm()
+    if form.validate_on_submit() and current_user.validate_password(form.password.data):
+        confirm_login()
+        return redirect_back()
+    return render_template('auth/login.html', form=form)
+
+
             
 
 @auth_bp.route('/logout')
@@ -100,7 +108,7 @@ def forget_password():
     
     form = ForgetPasswordForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data.lower()).first():
+        user = User.query.filter_by(email=form.email.data.lower()).first()
         if user:
             token = generate_token(user=user, operation=Operations.RESET_PASSWORD)
             send_reset_password_mail(user=user, token=token)
